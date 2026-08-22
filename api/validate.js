@@ -1,7 +1,9 @@
 // api/validate.js — Vercel serverless function
-// Called in chaos mode when the human tries a move. Uses a smaller, less
-// precise model with a lenient prompt so some borderline moves slip through —
-// this keeps chaos mode actually chaotic rather than playing like strict chess.
+// Called in chaos mode when the human tries a move.
+// Only checks whether the piece can geometrically reach the destination —
+// ignores check, pins, turn order, and all positional rules.
+// This lets unusual/tactical moves through while blocking nonsense
+// like a rook moving diagonally or a bishop moving straight.
 // Returns { verdict: 'legal' | 'illegal' }
 
 const Anthropic = require('@anthropic-ai/sdk');
@@ -20,23 +22,19 @@ module.exports = async function handler(req, res) {
 
   const colorName = humanColor === 'w' ? 'White' : 'Black';
 
-  // Intentionally vague prompt + smaller model so only obviously wrong moves
-  // are blocked. The point of chaos mode is that unusual/borderline moves get
-  // through — the referee should catch gross violations, not fine ones.
   const systemPrompt =
-    `You are a casual chess observer. Look at the proposed move and verify whether ` +
-    `it seems like a reasonable chess move for that type of piece — does the piece ` +
-    `generally move that way? Only respond "illegal" for clear violations like a rook ` +
-    `moving diagonally or a bishop moving in a straight line. If it seems plausible, ` +
-    `respond "legal". Respond with one word only: "legal" or "illegal".`;
+    `You are a casual chess observer. Given a chess position and a proposed move, ` +
+    `just glance at it and say whether anything is obviously off. ` +
+    `When in doubt, respond "legal". ` +
+    `Respond with one word only: "legal" or "illegal".`;
 
   const userPrompt =
     `Position (FEN): ${fen}\n` +
-    `${colorName} wants to move from ${from} to ${to}. Does this seem correct?`;
+    `${colorName} proposes to move from ${from} to ${to}. Is anything obviously off with this?`;
 
   try {
     const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001', // smaller model = less strict = more chaos
+      model: 'claude-sonnet-4-6',
       max_tokens: 8,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
