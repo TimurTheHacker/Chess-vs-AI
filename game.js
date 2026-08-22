@@ -3,13 +3,14 @@
 // MoveParser, Board rendering, AI moves via AIAdapter, referee rulings.
 
 const Game = (() => {
-  let _chess = null;          // chess.js instance for legal-move validation
+  let _chess = null;
   let _humanColor = 'w';
   let _aiColor = 'b';
   let _gameOver = false;
-  let _isHumanTurn = false;   // own flag — NOT _chess.turn(), which breaks when AI makes illegal moves
-  let _moveHistory = [];      // raw move strings (AI and human SAN)
-  let _rulingLog = [];        // referee/claim log entries
+  let _isHumanTurn = false;     // own flag — NOT _chess.turn() (breaks on AI illegal moves)
+  let _chaosMode = false;       // when true, human moves bypass chess.js; AI referee decides legality
+  let _moveHistory = [];
+  let _rulingLog = [];
 
   // ─── Init ────────────────────────────────────────────────────────────────
 
@@ -20,12 +21,9 @@ const Game = (() => {
     _moveHistory = [];
     _rulingLog = [];
 
-    _chess = new Chess(); // chess.js standard starting position
-
-    // Sync BoardStack with starting position
+    _chess = new Chess();
     _syncStackFromChess();
 
-    // Render board
     const boardEl = document.getElementById('board');
     Board.init(boardEl, _humanColor);
     Board.render();
@@ -34,7 +32,6 @@ const Game = (() => {
     _updateRulingLog();
 
     if (_humanColor === 'b') {
-      // AI (white) goes first
       _isHumanTurn = false;
       _updateTurnIndicator();
       _triggerAIMove();
@@ -44,35 +41,54 @@ const Game = (() => {
     }
   }
 
-  // ─── Human move entry point (called by Board drag-and-drop) ──────────────
+  function setChaosMode(enabled) {
+    _chaosMode = enabled;
+  }
 
-  function onHumanMove(from, to) {
-    if (_gameOver) return;
-    if (!_isHumanTurn) return; // block input while AI is thinking or it's not human's turn
+  // ─── Human move entry point ───────────────────────────────────────────────
+  // async so we can await the AI referee validation in chaos mode
 
-    // Attempt move through chess.js (validates legality)
-    // Promotion defaults to queen automatically
-    const result = _chess.move({ from, to, promotion: 'q' });
+  async function onHumanMove(from, to) {
+    if (_gameOver || !_isHumanTurn) return;
 
-    if (!result) {
-      Board.flashIllegal(from);
-      return; // illegal — snap back, turn stays with human
+    // ── King capture: always allowed regardless of mode ──────────────────
+    // The AI can leave its king in check; the human should be able to take it.
+    const targetPiece = BoardStack.getVisiblePiece(to);
+    const enemyKingType = _aiColor === 'w' ? 'K' : 'k';
+    if (targetPiece && targetPiece.type === enemyKingType) {
+      _isHumanTurn = false;
+      BoardStack.moveTopPiece(from, to, true);
+      _forceFlipChessTurn(); // keep chess.js from desync
+      _moveHistory.push(`${from}x${to} (king captured!)`);
+      Board.render();
+      _updateMoveLog();
+      _endGame('You captured the king — you win!');
+      _logRuling('Human captured the enemy king.');
+      return;
     }
 
-    // Immediately mark it as AI's turn so rapid drags are ignored during async work
+    // ── Chaos mode: bypass chess.js, let AI referee rule ─────────────────
+    if (_chaosMode) {
+      await _handleChaosModeMove(from, to);
+      return;
+    }
+
+    // ── Normal mode: chess.js enforces legality ───────────────────────────
+    const result = _chess.move({ from, to, promotion: 'q' });
+    if (!result) {
+      Board.flashIllegal(from);
+      return;
+    }
+
     _isHumanTurn = false;
 
-    // Apply to BoardStack: human always moves the top piece of 'from'
     const isCapture = result.flags.includes('c') || result.flags.includes('e');
     BoardStack.moveTopPiece(from, to, isCapture);
 
-    // Handle en passant: remove the captured pawn from its actual square
     if (result.flags.includes('e')) {
       const epRank = _humanColor === 'w' ? String(parseInt(to[1]) - 1) : String(parseInt(to[1]) + 1);
       BoardStack.removeTopPiece(to[0] + epRank);
     }
-
-    // Handle castling: move the rook too
     if (result.flags.includes('k') || result.flags.includes('q')) {
       _applyCastlingRook(result);
     }
@@ -82,16 +98,68 @@ const Game = (() => {
     _updateMoveLog();
     _updateTurnIndicator();
 
-    // Query referee after human move, then trigger AI
     _queryReferee().then(ruling => {
-      if (_handleRuling(ruling)) return; // game ended — don't trigger AI
+      if (_handleRuling(ruling)) return;
       _triggerAIMove();
     });
   }
 
-  /** Return legal destination squares for a piece on `square` (for move highlighting). */
+  // ─── Chaos mode move flow ─────────────────────────────────────────────────
+
+  async function _handleChaosModeMove(from, to) {
+    const preFen = _chess.fen();
+    const snapshot = BoardStack.getSnapshot();
+
+    // Apply move tentatively so the board shows the proposed state
+    const targetPiece = BoardStack.getVisiblePiece(to);
+    const isCapture = !!(targetPiece && targetPiece.color !== _humanColor);
+    BoardStack.moveTopPiece(from, to, isCapture);
+    Board.render();
+
+    // Lock turn during async referee call
+    _isHumanTurn = false;
+    _setStatus('Referee reviewing your move…');
+
+    let verdict;
+    try {
+      const r = await AIAdapter.validateHumanMove({ fen: preFen, from, to, humanColor: _humanColor });
+      verdict = r.verdict;
+    } catch (_) {
+      verdict = 'legal'; // fail open — don't hard-lock on API error
+    }
+
+    if (verdict === 'illegal') {
+      // Undo the tentative move
+      BoardStack.loadSnapshot(snapshot);
+      Board.render();
+      Board.flashIllegal(from);
+      _logRuling(`Referee blocked ${from}→${to}: illegal move.`);
+      _isHumanTurn = true;
+      _updateTurnIndicator();
+      _setStatus('Illegal — referee blocked that move.');
+      return;
+    }
+
+    // Move approved — try to keep chess.js in sync
+    _logRuling(`Referee approved: ${from}→${to}`);
+    const chessResult = _chess.move({ from, to, promotion: 'q' });
+    if (!chessResult) _forceFlipChessTurn();
+
+    _moveHistory.push(`${from}-${to}*`); // * marks a chaos-mode move
+    _updateMoveLog();
+    _updateTurnIndicator();
+
+    _queryReferee().then(ruling => {
+      if (_handleRuling(ruling)) return;
+      _triggerAIMove();
+    });
+  }
+
+  // ─── Legal destination highlights ────────────────────────────────────────
+
   function getLegalDestinations(square) {
     if (!_isHumanTurn) return [];
+    if (_chaosMode) return []; // in chaos mode any square is potentially valid — don't hint
     return _chess.moves({ square, verbose: true }).map(m => m.to);
   }
 
@@ -131,33 +199,24 @@ const Game = (() => {
       return;
     }
 
-    // Find the piece to move (may be buried in a stack)
     const candidate = MoveParser.resolveSourcePiece(parsed, _aiColor, BoardStack, _chess);
 
     if (candidate) {
-      // Apply to BoardStack — no legality check, AI can do anything
       const result = BoardStack.movePieceFromStack(
         candidate.square,
         candidate.piece.id,
         parsed.destination,
         parsed.isCapture
       );
-      if (result) {
-        // Try to keep chess.js FEN/PGN roughly in sync for referee context.
-        // This silently does nothing if the move is illegal — that's fine;
-        // _isHumanTurn controls turns, not _chess.turn().
-        _tryApplyToChessJs(candidate.square, parsed.destination);
-      }
+      if (result) _tryApplyToChessJs(candidate.square, parsed.destination);
     } else {
       _logRuling(`AI referenced a piece not found on board — skipping piece placement.`);
     }
 
-    // Record raw move string (including +/# annotations)
     _moveHistory.push(rawMove);
     Board.render();
     _updateMoveLog();
 
-    // Handle check/checkmate claims from AI's own annotation
     if (parsed.isCheckmate) {
       _logRuling('Claude claims: CHECKMATE — game over.');
       _endGame('Claude declared checkmate!');
@@ -168,10 +227,9 @@ const Game = (() => {
       _showBanner('Check — according to Claude!', false);
     }
 
-    // Always hand turn back to human after AI move, regardless of chess.js state
     _isHumanTurn = true;
     _updateTurnIndicator();
-    _setStatus('Your turn');
+    _setStatus(_chaosMode ? 'Your turn (Chaos Mode)' : 'Your turn');
   }
 
   // ─── Referee ─────────────────────────────────────────────────────────────
@@ -191,7 +249,6 @@ const Game = (() => {
     }
   }
 
-  /** Returns true if the game ended as a result of the ruling. */
   function _handleRuling(ruling) {
     if (ruling === 'continue') return false;
 
@@ -247,17 +304,15 @@ const Game = (() => {
   function _tryApplyToChessJs(from, to) {
     const result = _chess.move({ from, to, promotion: 'q' });
     if (!result) {
-      // AI made an illegal move — chess.js didn't flip its turn counter.
-      // Force-flip the active color in the FEN so the human's next move()
-      // call is accepted (chess.js validates whose turn it is internally).
+      // Illegal AI move — chess.js didn't flip its turn counter, so force-flip it
       _forceFlipChessTurn();
     }
   }
 
   function _forceFlipChessTurn() {
     const parts = _chess.fen().split(' ');
-    parts[1] = parts[1] === 'w' ? 'b' : 'w';                      // flip active color
-    if (parts[1] === 'w') parts[5] = String(parseInt(parts[5]) + 1); // increment fullmove if back to white
+    parts[1] = parts[1] === 'w' ? 'b' : 'w';
+    if (parts[1] === 'w') parts[5] = String(parseInt(parts[5]) + 1);
     _chess = new Chess(parts.join(' '));
   }
 
@@ -334,5 +389,5 @@ const Game = (() => {
     start(humanColor);
   }
 
-  return { start, newGame, onHumanMove, getLegalDestinations, resign };
+  return { start, newGame, onHumanMove, getLegalDestinations, setChaosMode, resign };
 })();

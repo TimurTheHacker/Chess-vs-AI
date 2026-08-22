@@ -4,11 +4,13 @@
 // can be added as sibling objects that implement the same two methods.
 //
 // Interface contract:
-//   getOpponentMove(state) → Promise<string>   raw move string
-//   getRefereeRuling(state) → Promise<{ ruling, rawResponse }>
+//   getOpponentMove(state)   → Promise<string>                    raw move string
+//   getRefereeRuling(state)  → Promise<{ ruling, rawResponse }>
+//   validateHumanMove(state) → Promise<{ verdict: 'legal'|'illegal' }>
 //
-// state shape for both calls:
-//   { fen, pgn, moveHistory: string[], aiColor: 'w'|'b', humanColor: 'w'|'b' }
+// state shape:
+//   getOpponentMove / getRefereeRuling: { fen, pgn, moveHistory, aiColor, humanColor }
+//   validateHumanMove: { fen, from, to, humanColor }
 
 const AnthropicAdapter = {
   async getOpponentMove(state) {
@@ -28,6 +30,16 @@ const AnthropicAdapter = {
     }
     const data = await resp.json();
     return data.move ?? '';
+  },
+
+  async validateHumanMove(state) {
+    const resp = await fetch('/api/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fen: state.fen, from: state.from, to: state.to, humanColor: state.humanColor }),
+    });
+    if (!resp.ok) return { verdict: 'legal' }; // fail open so API errors don't hard-lock the player
+    return resp.json(); // { verdict: 'legal' | 'illegal' }
   },
 
   async getRefereeRuling(state) {

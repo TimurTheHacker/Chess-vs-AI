@@ -208,6 +208,54 @@ h1 {
 .ctrl-btn.danger { border-color: #e74c3c; color: #e74c3c; }
 .ctrl-btn.danger:hover { background: #e74c3c; color: #fff; }
 
+/* ── Chaos mode toggle ──────────────────────────────────── */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  gap: 10px;
+}
+.toggle-label {
+  font-size: 0.8rem;
+  color: #aaa;
+  line-height: 1.4;
+}
+.toggle-label small { font-size: 0.7rem; color: #666; }
+.chaos-active .toggle-label { color: #e74c3c; }
+.chaos-active .toggle-label small { color: #c0392b; }
+
+.toggle-wrap {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.toggle-wrap input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: #2a2a5a;
+  border-radius: 22px;
+  transition: background 0.2s;
+  cursor: pointer;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  left: 3px; top: 3px;
+  background: #aaa;
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+.toggle-wrap input:checked + .toggle-slider { background: #6b1a1a; }
+.toggle-wrap input:checked + .toggle-slider::before {
+  transform: translateX(18px);
+  background: #e74c3c;
+}
+
 /* ── Scrollbars ─────────────────────────────────────────── */
 .log-scroll::-webkit-scrollbar { width: 4px; }
 .log-scroll::-webkit-scrollbar-track { background: transparent; }

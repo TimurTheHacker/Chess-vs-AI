@@ -53,6 +53,14 @@
       <button class="ctrl-btn" onclick="promptNewGame()">New Game</button>
       <br><br>
       <button class="ctrl-btn danger" onclick="resignGame()">Resign</button>
+      <br><br>
+      <label class="toggle-row" title="When on, you can attempt any move — the AI referee will allow or block it. King captures are always allowed.">
+        <span class="toggle-label">Chaos Mode<br><small>AI referee judges your moves</small></span>
+        <span class="toggle-wrap">
+          <input type="checkbox" id="chaos-toggle" onchange="toggleChaos(this.checked)" />
+          <span class="toggle-slider"></span>
+        </span>
+      </label>
     </div>
 
     <div class="panel-box">
@@ -94,7 +102,13 @@
   }
 
   function resignGame() {
-    if (window.Game) Game.resign();
+    if (typeof Game !== 'undefined') Game.resign();
+  }
+
+  function toggleChaos(enabled) {
+    if (typeof Game !== 'undefined') Game.setChaosMode(enabled);
+    const label = document.getElementById('chaos-toggle').closest('.toggle-row');
+    label.classList.toggle('chaos-active', enabled);
   }
 </script>
 
