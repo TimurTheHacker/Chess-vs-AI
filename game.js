@@ -191,6 +191,33 @@ const Game = (() => {
     return _chess.moves({ square, verbose: true }).map(m => m.to);
   }
 
+  // ─── Accurate FEN from BoardStack ────────────────────────────────────────
+  // chess.js FEN drifts after illegal moves. Rebuild the piece-placement rank
+  // from BoardStack (the real source of truth) and keep the rest from chess.js
+  // (active color, castling rights, en passant, clocks).
+
+  function _buildFen() {
+    const ranks = [];
+    for (let r = 8; r >= 1; r--) {
+      let rankStr = '';
+      let empty = 0;
+      for (const f of 'abcdefgh') {
+        const piece = BoardStack.getVisiblePiece(f + r);
+        if (piece) {
+          if (empty) { rankStr += empty; empty = 0; }
+          rankStr += piece.type; // uppercase = white, lowercase = black
+        } else {
+          empty++;
+        }
+      }
+      if (empty) rankStr += empty;
+      ranks.push(rankStr);
+    }
+    const placement = ranks.join('/');
+    const rest = _chess.fen().split(' ').slice(1).join(' '); // active color + castling + ep + clocks
+    return `${placement} ${rest}`;
+  }
+
   // ─── AI move ─────────────────────────────────────────────────────────────
 
   async function _triggerAIMove() {
@@ -201,7 +228,7 @@ const Game = (() => {
     let rawMove;
     try {
       rawMove = await AIAdapter.getOpponentMove({
-        fen: _chess.fen(),
+        fen: _buildFen(),
         pgn: _chess.pgn(),
         aiColor: _aiColor,
         humanColor: _humanColor,
@@ -284,7 +311,7 @@ const Game = (() => {
   async function _queryReferee() {
     try {
       const result = await AIAdapter.getRefereeRuling({
-        fen: _chess.fen(),
+        fen: _buildFen(),
         pgn: _chess.pgn(),
         moveHistory: _moveHistory,
         humanColor: _humanColor,
