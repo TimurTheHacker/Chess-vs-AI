@@ -245,11 +245,20 @@ const Game = (() => {
   }
 
   function _tryApplyToChessJs(from, to) {
-    try {
-      _chess.move({ from, to, promotion: 'q' });
-    } catch (_) {
-      // Illegal AI move — FEN/PGN will drift slightly, but that's acceptable
+    const result = _chess.move({ from, to, promotion: 'q' });
+    if (!result) {
+      // AI made an illegal move — chess.js didn't flip its turn counter.
+      // Force-flip the active color in the FEN so the human's next move()
+      // call is accepted (chess.js validates whose turn it is internally).
+      _forceFlipChessTurn();
     }
+  }
+
+  function _forceFlipChessTurn() {
+    const parts = _chess.fen().split(' ');
+    parts[1] = parts[1] === 'w' ? 'b' : 'w';                      // flip active color
+    if (parts[1] === 'w') parts[5] = String(parseInt(parts[5]) + 1); // increment fullmove if back to white
+    _chess = new Chess(parts.join(' '));
   }
 
   // ─── UI helpers ──────────────────────────────────────────────────────────
