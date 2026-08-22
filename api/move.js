@@ -18,31 +18,23 @@ module.exports = async function handler(req, res) {
 
   const colorName = aiColor === 'b' ? 'Black' : 'White';
 
-  // Deliberately minimal prompt — no example moves, no mention of stacking,
-  // no mention of illegal moves. The model should derive its move from chess knowledge + FEN.
   const systemPrompt =
-    `You are playing a game of chess as ${colorName}. ` +
-    `Respond with ONLY your chosen move and nothing else — no explanation, ` +
-    `no punctuation before or after, no commentary. ` +
-    `Use standard algebraic notation: a piece-type letter (K, Q, R, B, N) ` +
-    `followed by the destination square (file letter and rank number). ` +
-    `Omit the piece letter for pawn moves. ` +
-    `Prefix the destination with lowercase x when making a capture. ` +
-    `Append + if your move gives check, or # if it gives checkmate. ` +
-    `If a pawn reaches the back rank, append the promotion piece letter immediately after the destination square. ` +
-    `Do not include any other text.`;
+    `You are playing chess as ${colorName}. Output your move in algebraic notation and nothing else.`;
 
   const userPrompt =
-    `Current position (FEN): ${fen}\n` +
+    `Position (FEN): ${fen}\n` +
     (pgn ? `Move history (PGN): ${pgn}\n` : '') +
-    `It is ${colorName}'s turn. What is your move?`;
+    `${colorName} to move.`;
 
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 10, // a move string is at most ~7 chars — no budget left for comments
+      max_tokens: 10,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+      messages: [
+        { role: 'user', content: userPrompt },
+        { role: 'assistant', content: '' }, // prefill: forces the model to start with the move, nothing before it
+      ],
     });
 
     const moveText = message.content[0]?.text?.trim() ?? '';

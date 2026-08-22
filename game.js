@@ -9,6 +9,7 @@ const Game = (() => {
   let _gameOver = false;
   let _isHumanTurn = false;     // own flag — NOT _chess.turn() (breaks on AI illegal moves)
   let _chaosMode = false;       // when true, human moves bypass chess.js; AI referee decides legality
+  let _consecutiveAIFailures = 0; // retry counter; forfeit at 3
   let _moveHistory = [];
   let _rulingLog = [];
 
@@ -18,6 +19,7 @@ const Game = (() => {
     _humanColor = humanColor;
     _aiColor = humanColor === 'w' ? 'b' : 'w';
     _gameOver = false;
+    _consecutiveAIFailures = 0;
     _moveHistory = [];
     _rulingLog = [];
 
@@ -235,10 +237,9 @@ const Game = (() => {
         moveHistory: _moveHistory,
       });
     } catch (err) {
-      _setStatus('AI error — skipping turn.');
       _logRuling(`AI error: ${err.message}`);
-      _isHumanTurn = true;
-      _updateTurnIndicator();
+      if (_aiRetryOrForfeit()) return;
+      _triggerAIMove();
       return;
     }
 
@@ -248,11 +249,11 @@ const Game = (() => {
 
     const parsed = MoveParser.parse(rawMove);
     if (!parsed) {
-      _logRuling('Could not parse AI move — turn skipped.');
+      _logRuling(`Could not parse "${rawMove}" — asking Claude to try again.`);
       _moveHistory.push(`(unparseable: ${rawMove})`);
       _updateMoveLog();
-      _isHumanTurn = true;
-      _updateTurnIndicator();
+      if (_aiRetryOrForfeit()) return;
+      _triggerAIMove();
       return;
     }
 
@@ -287,6 +288,9 @@ const Game = (() => {
       _forceFlipChessTurn();
     }
 
+    // Successful move — reset the failure counter
+    _consecutiveAIFailures = 0;
+
     _moveHistory.push(rawMove);
     Board.render();
     _updateMoveLog();
@@ -304,6 +308,18 @@ const Game = (() => {
     _isHumanTurn = true;
     _updateTurnIndicator();
     _setStatus(_chaosMode ? 'Your turn (Chaos Mode)' : 'Your turn');
+  }
+
+  // Returns true if Claude has forfeited (caller should stop), false if should retry.
+  function _aiRetryOrForfeit() {
+    _consecutiveAIFailures++;
+    if (_consecutiveAIFailures >= 3) {
+      _logRuling('Claude forfeits after 3 consecutive failures.');
+      _endGame('Claude forfeits — you win!');
+      return true;
+    }
+    _setStatus(`Retrying Claude's move (attempt ${_consecutiveAIFailures + 1}/3)…`);
+    return false;
   }
 
   // ─── Referee ─────────────────────────────────────────────────────────────
