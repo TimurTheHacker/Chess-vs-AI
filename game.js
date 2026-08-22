@@ -125,7 +125,7 @@ const Game = (() => {
     }
 
     // Find the piece to move on the board (may be buried)
-    const candidate = MoveParser.resolveSourcePiece(parsed, _aiColor, BoardStack);
+    const candidate = MoveParser.resolveSourcePiece(parsed, _aiColor, BoardStack, _chess);
 
     if (candidate) {
       // Apply move to BoardStack (bypasses chess.js legality)

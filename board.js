@@ -128,8 +128,9 @@ const Board = (() => {
     span.closest('.square').classList.add('drag-source');
 
     // Ask game.js for legal destinations to highlight
-    if (window.Game && window.Game.getLegalDestinations) {
-      const dests = window.Game.getLegalDestinations(_dragFrom);
+    // (Game is a global const — not on window, but accessible in the same script scope)
+    if (typeof Game !== 'undefined' && Game.getLegalDestinations) {
+      const dests = Game.getLegalDestinations(_dragFrom);
       highlightLegal(dests);
     }
 
@@ -162,8 +163,8 @@ const Board = (() => {
     _dragFrom = null;
 
     // Delegate to game logic
-    if (window.Game && window.Game.onHumanMove) {
-      window.Game.onHumanMove(from, toSquare);
+    if (typeof Game !== 'undefined' && Game.onHumanMove) {
+      Game.onHumanMove(from, toSquare);
     }
   }
 

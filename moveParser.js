@@ -112,6 +112,7 @@ const MoveParser = (() => {
    *
    * aiColor: 'w' or 'b' — the AI's color.
    * boardStack: the BoardStack module (must expose findPiecesByTypeAndColor).
+   * chess: optional chess.js instance used to prefer the legally-reachable piece.
    *
    * Returns { square, piece } or null if no matching piece is found.
    *
@@ -119,17 +120,19 @@ const MoveParser = (() => {
    *  1. Find all pieces of the right type+color on the board.
    *  2. Filter by disambigFile / disambigRank if provided.
    *  3. If exactly one candidate: use it.
-   *  4. If multiple candidates: pick one at random (Math.random()).
-   *     -- This randomness is intentional. The AI is chaotic; we don't
-   *        try to resolve ambiguity "correctly" because there may be no
-   *        correct answer when the AI makes illegal moves. --
-   *  5. If zero candidates: return null (AI has no such piece).
+   *  4. If multiple candidates and a chess instance is available:
+   *       a. Filter to those that can legally reach the destination.
+   *       b. If exactly one can → use it (unambiguous legal move).
+   *       c. If multiple can → pick one at random (genuine ambiguity).
+   *       d. If none can (AI making an illegal move) → pick randomly from
+   *          all candidates so the chaos still happens.
+   *  5. If multiple candidates and no chess instance: pick at random.
+   *     -- Randomness is intentional for the cases that remain ambiguous. --
    */
-  function resolveSourcePiece(parsed, aiColor, boardStack) {
+  function resolveSourcePiece(parsed, aiColor, boardStack, chess) {
     if (!parsed) return null;
 
-    // For pawns, the piece letter stored in boardStack is uppercase ('P') for white
-    // and lowercase ('p') for black. Same for all other pieces.
+    // Piece type in boardStack: uppercase for white, lowercase for black.
     const boardPieceType = aiColor === 'w'
       ? parsed.pieceType.toUpperCase()
       : parsed.pieceType.toLowerCase();
@@ -146,9 +149,24 @@ const MoveParser = (() => {
     if (candidates.length === 0) return null;
     if (candidates.length === 1) return candidates[0];
 
-    // Multiple candidates — pick one at random (intentional, see comment above)
-    const chosen = candidates[Math.floor(Math.random() * candidates.length)];
-    return chosen;
+    // Multiple candidates — try to narrow by legal reachability first.
+    if (chess) {
+      const legal = candidates.filter(c => {
+        const moves = chess.moves({ square: c.square, verbose: true });
+        return moves.some(m => m.to === parsed.destination);
+      });
+
+      if (legal.length === 1) return legal[0]; // unambiguous legal move
+      if (legal.length > 1) {
+        // Genuinely ambiguous even after legality filter — pick at random.
+        return legal[Math.floor(Math.random() * legal.length)];
+      }
+      // Zero legal candidates: AI is making an illegal move.
+      // Fall through to random selection from all candidates so it still happens.
+    }
+
+    // Multiple candidates with no legal distinction — pick at random (intentional).
+    return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
   return { parse, resolveSourcePiece };
