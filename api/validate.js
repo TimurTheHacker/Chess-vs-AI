@@ -15,9 +15,9 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { fen, from, to, humanColor } = req.body;
-  if (!fen || !from || !to) {
-    return res.status(400).json({ error: 'Missing fen, from, or to' });
+  const { fen, to, humanColor } = req.body;
+  if (!fen || !to) {
+    return res.status(400).json({ error: 'Missing fen or to' });
   }
 
   const colorName = humanColor === 'w' ? 'White' : 'Black';
@@ -30,7 +30,7 @@ module.exports = async function handler(req, res) {
 
   const userPrompt =
     `Position (FEN): ${fen}\n` +
-    `${colorName} proposes to move from ${from} to ${to}. Is anything obviously off with this?`;
+    `${colorName} plays ${to}. Is anything obviously off with this?`;
 
   try {
     const message = await client.messages.create({

@@ -36,7 +36,7 @@ const AnthropicAdapter = {
     const resp = await fetch('/api/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fen: state.fen, from: state.from, to: state.to, humanColor: state.humanColor }),
+      body: JSON.stringify({ fen: state.fen, to: state.to, humanColor: state.humanColor }),
     });
     if (!resp.ok) return { verdict: 'legal' }; // fail open so API errors don't hard-lock the player
     return resp.json(); // { verdict: 'legal' | 'illegal' }

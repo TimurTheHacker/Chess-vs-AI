@@ -124,7 +124,7 @@ const Game = (() => {
 
     let verdict;
     try {
-      const r = await AIAdapter.validateHumanMove({ fen: preFen, from, to, humanColor: _humanColor });
+      const r = await AIAdapter.validateHumanMove({ fen: preFen, to, humanColor: _humanColor });
       verdict = r.verdict;
     } catch (_) {
       verdict = 'legal'; // fail open — don't hard-lock on API error
