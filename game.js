@@ -51,25 +51,28 @@ const Game = (() => {
   async function onHumanMove(from, to) {
     if (_gameOver || !_isHumanTurn) return;
 
-    // ── King capture: always allowed regardless of mode ──────────────────
-    // The AI can leave its king in check; the human should be able to take it.
     const targetPiece = BoardStack.getVisiblePiece(to);
     const enemyKingType = _aiColor === 'w' ? 'K' : 'k';
+
+    // ── Chaos mode: all moves (including king captures) go through the referee ──
+    // This prevents trivially dragging the king across the board for an instant win.
+    if (_chaosMode) {
+      await _handleChaosModeMove(from, to, targetPiece, enemyKingType);
+      return;
+    }
+
+    // ── Normal mode: king capture bypass ─────────────────────────────────
+    // chess.js never allows capturing the king, but the AI can leave its king
+    // in check. If the human drags to the enemy king's square, allow it directly.
     if (targetPiece && targetPiece.type === enemyKingType) {
       _isHumanTurn = false;
       BoardStack.moveTopPiece(from, to, true);
-      _forceFlipChessTurn(); // keep chess.js from desync
+      _forceFlipChessTurn();
       _moveHistory.push(`${from}x${to} (king captured!)`);
       Board.render();
       _updateMoveLog();
       _endGame('You captured the king — you win!');
       _logRuling('Human captured the enemy king.');
-      return;
-    }
-
-    // ── Chaos mode: bypass chess.js, let AI referee rule ─────────────────
-    if (_chaosMode) {
-      await _handleChaosModeMove(from, to);
       return;
     }
 
@@ -106,12 +109,11 @@ const Game = (() => {
 
   // ─── Chaos mode move flow ─────────────────────────────────────────────────
 
-  async function _handleChaosModeMove(from, to) {
+  async function _handleChaosModeMove(from, to, targetPiece, enemyKingType) {
     const preFen = _chess.fen();
     const snapshot = BoardStack.getSnapshot();
 
     // Apply move tentatively so the board shows the proposed state
-    const targetPiece = BoardStack.getVisiblePiece(to);
     const isCapture = !!(targetPiece && targetPiece.color !== _humanColor);
     BoardStack.moveTopPiece(from, to, isCapture);
     Board.render();
@@ -129,7 +131,6 @@ const Game = (() => {
     }
 
     if (verdict === 'illegal') {
-      // Undo the tentative move
       BoardStack.loadSnapshot(snapshot);
       Board.render();
       Board.flashIllegal(from);
@@ -140,8 +141,19 @@ const Game = (() => {
       return;
     }
 
-    // Move approved — try to keep chess.js in sync
+    // Move approved
     _logRuling(`Referee approved: ${from}→${to}`);
+
+    // If the approved move captured the enemy king, end the game now
+    if (targetPiece && targetPiece.type === enemyKingType) {
+      _moveHistory.push(`${from}x${to}* (king captured!)`);
+      _updateMoveLog();
+      _endGame('You captured the king — you win!');
+      _logRuling('Human captured the enemy king (chaos mode).');
+      return;
+    }
+
+    // Regular approved move — keep chess.js in sync and continue
     const chessResult = _chess.move({ from, to, promotion: 'q' });
     if (!chessResult) _forceFlipChessTurn();
 

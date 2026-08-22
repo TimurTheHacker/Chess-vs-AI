@@ -1,7 +1,7 @@
 // api/validate.js — Vercel serverless function
-// Called in "chaos mode" when the human tries to make a move that chess.js
-// would normally reject. Asks Claude to rule whether the proposed move is
-// legal under standard chess rules.
+// Called in chaos mode when the human tries a move. Uses a smaller, less
+// precise model with a lenient prompt so some borderline moves slip through —
+// this keeps chaos mode actually chaotic rather than playing like strict chess.
 // Returns { verdict: 'legal' | 'illegal' }
 
 const Anthropic = require('@anthropic-ai/sdk');
@@ -20,31 +20,33 @@ module.exports = async function handler(req, res) {
 
   const colorName = humanColor === 'w' ? 'White' : 'Black';
 
+  // Intentionally vague prompt + smaller model so only obviously wrong moves
+  // are blocked. The point of chaos mode is that unusual/borderline moves get
+  // through — the referee should catch gross violations, not fine ones.
   const systemPrompt =
-    `You are a chess referee evaluating a single proposed move for legality. ` +
-    `Respond with exactly one word: "legal" if the move is permitted under standard chess rules, ` +
-    `or "illegal" if it violates any rule (wrong piece movement, leaves own king in check, ` +
-    `moving opponent's piece, etc.). No explanation, no other text.`;
+    `You are a casual chess observer. Look at the proposed move and verify whether ` +
+    `it seems like a reasonable chess move for that type of piece — does the piece ` +
+    `generally move that way? Only respond "illegal" for clear violations like a rook ` +
+    `moving diagonally or a bishop moving in a straight line. If it seems plausible, ` +
+    `respond "legal". Respond with one word only: "legal" or "illegal".`;
 
   const userPrompt =
     `Position (FEN): ${fen}\n` +
-    `${colorName} proposes to move from ${from} to ${to}. ` +
-    `Is this legal?`;
+    `${colorName} wants to move from ${from} to ${to}. Does this seem correct?`;
 
   try {
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001', // smaller model = less strict = more chaos
       max_tokens: 8,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    const raw = message.content[0]?.text?.trim().toLowerCase() ?? 'illegal';
+    const raw = message.content[0]?.text?.trim().toLowerCase() ?? 'legal';
     const verdict = raw.startsWith('legal') ? 'legal' : 'illegal';
     return res.status(200).json({ verdict, rawResponse: raw });
   } catch (err) {
     console.error('Claude API error (validate):', err);
-    // On failure, default to allowing the move so a bad API response doesn't hard-lock the player
     return res.status(200).json({ verdict: 'legal', rawResponse: 'error-fallback' });
   }
 };
