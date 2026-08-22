@@ -187,6 +187,8 @@ const Game = (() => {
       return;
     }
 
+    if (_gameOver) return; // resigned or ended while AI was thinking
+
     _logRuling(`Claude's move: "${rawMove}"`);
 
     const parsed = MoveParser.parse(rawMove);
@@ -210,7 +212,24 @@ const Game = (() => {
       );
       if (result) _tryApplyToChessJs(candidate.square, parsed.destination);
     } else {
-      _logRuling(`AI referenced a piece not found on board — skipping piece placement.`);
+      // No matching piece found — Claude hallucinated a source.
+      // Honour the spirit of the move: clear the claimed source square (if
+      // a full square can be determined from disambiguation) and spawn a new
+      // piece of the claimed type at the destination.
+      const srcSquare = (parsed.disambigFile && parsed.disambigRank)
+        ? parsed.disambigFile + parsed.disambigRank
+        : null;
+      if (srcSquare) {
+        const removed = BoardStack.removeTopPiece(srcSquare);
+        if (removed) _logRuling(`Spawned: removed ${removed.type} from ${srcSquare} (no matching piece).`);
+      }
+      const spawnType = _aiColor === 'w'
+        ? parsed.pieceType.toUpperCase()
+        : parsed.pieceType.toLowerCase();
+      const spawnId = `${spawnType}_spawn_${Date.now()}`;
+      BoardStack.placePiece(parsed.destination, { type: spawnType, color: _aiColor, id: spawnId }, parsed.isCapture);
+      _logRuling(`Spawned: ${spawnType} appeared on ${parsed.destination} (Claude claimed it from ${srcSquare ?? 'unknown'}).`);
+      _forceFlipChessTurn();
     }
 
     _moveHistory.push(rawMove);

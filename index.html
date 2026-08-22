@@ -103,6 +103,7 @@
 
   function resignGame() {
     if (typeof Game !== 'undefined') Game.resign();
+    // also covers the case where the panel resign button is clicked before a game starts
   }
 
   function toggleChaos(enabled) {
