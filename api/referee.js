@@ -23,13 +23,16 @@ module.exports = async function handler(req, res) {
 
   const systemPrompt =
     `You are the referee for a chess game between ${humanColorName} (human) and ${aiColor} (AI). ` +
-    `Examine the position and the move history and issue exactly one ruling word from this list: ` +
-    `check, stalemate, repetition, checkmate, continue. ` +
-    `"check" means the side that just moved has put the opponent in check. ` +
-    `"checkmate" means the game is over by checkmate. ` +
-    `"stalemate" means the game is a draw by stalemate. ` +
-    `"repetition" means the position has occurred three or more times (threefold repetition). ` +
-    `"continue" means none of the above apply and the game should go on. ` +
+    `The FEN you receive reflects the position AFTER the most recent move was played; the side listed as active in the FEN is the one whose turn it now is. ` +
+    `Issue exactly one ruling word from this list: check, checkmate, stalemate, repetition, continue. ` +
+    `Follow these steps in order:\n` +
+    `1. Is the active side's king currently in check? If NO, go to step 3.\n` +
+    `2. Does the active side have at least one legal move that removes the check (king escape, block, or capture)? ` +
+       `If YES → rule "check". If NO → rule "checkmate". ` +
+       `IMPORTANT: only rule "checkmate" when you are certain there is no legal escape. When in doubt, rule "check".\n` +
+    `3. Does the active side have any legal moves at all? If NO → rule "stalemate".\n` +
+    `4. Has the exact same position (same pieces, same castling rights, same en-passant square, same side to move) occurred three or more times? If YES → rule "repetition".\n` +
+    `5. Otherwise → rule "continue".\n` +
     `Respond with ONLY the single ruling word and nothing else.`;
 
   const userPrompt =

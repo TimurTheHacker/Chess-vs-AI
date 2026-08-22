@@ -40,7 +40,7 @@ module.exports = async function handler(req, res) {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 32,
+      max_tokens: 10, // a move string is at most ~7 chars — no budget left for comments
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     });
