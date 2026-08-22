@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess vs Claude</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<h1>Chess vs Claude</h1>
+
+<!-- Color picker shown before game starts -->
+<div id="color-picker">
+  <h2>Choose your color</h2>
+  <div class="color-btn-row">
+    <button class="color-btn" onclick="startGame('w')">♔ White</button>
+    <button class="color-btn" onclick="startGame('b')">♚ Black</button>
+  </div>
+</div>
+
+<!-- Game area (hidden until color chosen) -->
+<div id="game-area" style="display:none">
+
+  <!-- Left panel -->
+  <div class="side-panel">
+    <div class="panel-box">
+      <div id="turn-indicator">Your turn</div>
+      <div id="status-msg"></div>
+    </div>
+
+    <div class="panel-box">
+      <h3>Move History</h3>
+      <div class="log-scroll" id="move-log"></div>
+    </div>
+
+    <div class="panel-box">
+      <h3>Claude's Claims / Rulings</h3>
+      <div class="log-scroll" id="ruling-log"></div>
+    </div>
+  </div>
+
+  <!-- Board -->
+  <div id="board-wrap">
+    <div id="banner" class="banner"></div>
+    <div id="board" class="chessboard"></div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="side-panel">
+    <div class="panel-box">
+      <h3>Controls</h3>
+      <button class="ctrl-btn" onclick="promptNewGame()">New Game</button>
+      <br><br>
+      <button class="ctrl-btn danger" onclick="resignGame()">Resign</button>
+    </div>
+
+    <div class="panel-box">
+      <h3>Stack Legend</h3>
+      <p style="font-size:0.75rem; line-height:1.6; color:#aaa;">
+        A <span style="color:#ffcc00; font-weight:bold">gold border</span> on a square
+        means pieces are stacked beneath the visible one.<br>
+        The badge number shows total pieces on that square.<br><br>
+        You can drag any of your buried pieces to move them out normally.
+      </p>
+    </div>
+  </div>
+
+</div><!-- #game-area -->
+
+<!-- chess.js from CDN (ES module not needed — use UMD/global build) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+<!-- Our modules — order matters: dependencies before dependents -->
+<script src="boardStack.js"></script>
+<script src="moveParser.js"></script>
+<script src="aiAdapter.js"></script>
+<script src="board.js"></script>
+<script src="game.js"></script>
+
+<script>
+  function startGame(color) {
+    document.getElementById('color-picker').style.display = 'none';
+    document.getElementById('game-area').style.display = 'flex';
+    Game.start(color);
+  }
+
+  function promptNewGame() {
+    // Show color picker again
+    document.getElementById('game-area').style.display = 'none';
+    document.getElementById('color-picker').style.display = 'flex';
+    const banner = document.getElementById('banner');
+    if (banner) banner.style.display = 'none';
+  }
+
+  function resignGame() {
+    if (window.Game) Game.resign();
+  }
+</script>
+
+</body>
+</html>

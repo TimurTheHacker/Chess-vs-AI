@@ -1,0 +1,13 @@
+{
+  "name": "chessvsai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chess vs Claude — unconventional AI opponent via Anthropic API",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.55.0"
+  },
+  "scripts": {
+    "test": "node tests/boardStack.test.cjs",
+    "dev": "vercel dev"
+  }
+}
