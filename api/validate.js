@@ -15,9 +15,9 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { fen, to, humanColor } = req.body;
-  if (!fen || !to) {
-    return res.status(400).json({ error: 'Missing fen or to' });
+  const { fen, moveNotation, humanColor } = req.body;
+  if (!fen || !moveNotation) {
+    return res.status(400).json({ error: 'Missing fen or moveNotation' });
   }
 
   const colorName = humanColor === 'w' ? 'White' : 'Black';
@@ -30,7 +30,7 @@ module.exports = async function handler(req, res) {
 
   const userPrompt =
     `Position (FEN): ${fen}\n` +
-    `${colorName} plays ${to}. Is anything obviously off with this?`;
+    `${colorName} plays ${moveNotation}. Is anything obviously off with this?`;
 
   try {
     const message = await client.messages.create({

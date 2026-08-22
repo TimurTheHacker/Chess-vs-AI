@@ -107,14 +107,30 @@ const Game = (() => {
     });
   }
 
+  // ─── Algebraic notation builder ──────────────────────────────────────────
+
+  function _buildMoveNotation(piece, from, to, isCapture) {
+    if (!piece) return to;
+    const type = piece.type.toUpperCase();
+    if (type === 'P') {
+      // Pawn: no letter; capture includes the source file (e.g. exd5)
+      return isCapture ? `${from[0]}x${to}` : to;
+    }
+    return `${type}${isCapture ? 'x' : ''}${to}`;
+  }
+
   // ─── Chaos mode move flow ─────────────────────────────────────────────────
 
   async function _handleChaosModeMove(from, to, targetPiece, enemyKingType) {
     const preFen = _chess.fen();
     const snapshot = BoardStack.getSnapshot();
 
-    // Apply move tentatively so the board shows the proposed state
+    // Build algebraic notation BEFORE moving, while the piece is still on 'from'
+    const movingPiece = BoardStack.getVisiblePiece(from);
     const isCapture = !!(targetPiece && targetPiece.color !== _humanColor);
+    const moveNotation = _buildMoveNotation(movingPiece, from, to, isCapture);
+
+    // Apply move tentatively so the board shows the proposed state
     BoardStack.moveTopPiece(from, to, isCapture);
     Board.render();
 
@@ -124,7 +140,7 @@ const Game = (() => {
 
     let verdict;
     try {
-      const r = await AIAdapter.validateHumanMove({ fen: preFen, to, humanColor: _humanColor });
+      const r = await AIAdapter.validateHumanMove({ fen: preFen, moveNotation, humanColor: _humanColor });
       verdict = r.verdict;
     } catch (_) {
       verdict = 'legal'; // fail open — don't hard-lock on API error
