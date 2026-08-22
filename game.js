@@ -3,12 +3,13 @@
 // MoveParser, Board rendering, AI moves via AIAdapter, referee rulings.
 
 const Game = (() => {
-  let _chess = null;       // chess.js instance for legal-move validation
+  let _chess = null;          // chess.js instance for legal-move validation
   let _humanColor = 'w';
   let _aiColor = 'b';
   let _gameOver = false;
-  let _moveHistory = [];   // raw move strings (AI and human SAN)
-  let _rulingLog = [];     // referee/claim log entries
+  let _isHumanTurn = false;   // own flag — NOT _chess.turn(), which breaks when AI makes illegal moves
+  let _moveHistory = [];      // raw move strings (AI and human SAN)
+  let _rulingLog = [];        // referee/claim log entries
 
   // ─── Init ────────────────────────────────────────────────────────────────
 
@@ -31,11 +32,15 @@ const Game = (() => {
 
     _updateMoveLog();
     _updateRulingLog();
-    _updateTurnIndicator();
 
-    // If AI goes first (human plays black), trigger AI move immediately
     if (_humanColor === 'b') {
+      // AI (white) goes first
+      _isHumanTurn = false;
+      _updateTurnIndicator();
       _triggerAIMove();
+    } else {
+      _isHumanTurn = true;
+      _updateTurnIndicator();
     }
   }
 
@@ -43,26 +48,28 @@ const Game = (() => {
 
   function onHumanMove(from, to) {
     if (_gameOver) return;
-    if (_chess.turn() !== _humanColor) return; // not human's turn
+    if (!_isHumanTurn) return; // block input while AI is thinking or it's not human's turn
 
     // Attempt move through chess.js (validates legality)
-    // Try promotion to queen automatically if pawn reaches back rank
-    let result = _chess.move({ from, to, promotion: 'q' });
+    // Promotion defaults to queen automatically
+    const result = _chess.move({ from, to, promotion: 'q' });
 
     if (!result) {
       Board.flashIllegal(from);
-      return; // illegal — snap back
+      return; // illegal — snap back, turn stays with human
     }
+
+    // Immediately mark it as AI's turn so rapid drags are ignored during async work
+    _isHumanTurn = false;
 
     // Apply to BoardStack: human always moves the top piece of 'from'
     const isCapture = result.flags.includes('c') || result.flags.includes('e');
     BoardStack.moveTopPiece(from, to, isCapture);
 
-    // Handle en passant: remove the captured pawn (it's not on 'to')
+    // Handle en passant: remove the captured pawn from its actual square
     if (result.flags.includes('e')) {
       const epRank = _humanColor === 'w' ? String(parseInt(to[1]) - 1) : String(parseInt(to[1]) + 1);
-      const epSquare = to[0] + epRank;
-      BoardStack.removeTopPiece(epSquare);
+      BoardStack.removeTopPiece(to[0] + epRank);
     }
 
     // Handle castling: move the rook too
@@ -75,16 +82,16 @@ const Game = (() => {
     _updateMoveLog();
     _updateTurnIndicator();
 
-    // Query referee after human move
+    // Query referee after human move, then trigger AI
     _queryReferee().then(ruling => {
-      if (_handleRuling(ruling)) return; // game over
+      if (_handleRuling(ruling)) return; // game ended — don't trigger AI
       _triggerAIMove();
     });
   }
 
-  /** Return legal destination squares for a piece on `square` (for highlighting). */
+  /** Return legal destination squares for a piece on `square` (for move highlighting). */
   function getLegalDestinations(square) {
-    if (_chess.turn() !== _humanColor) return [];
+    if (!_isHumanTurn) return [];
     return _chess.moves({ square, verbose: true }).map(m => m.to);
   }
 
@@ -107,8 +114,7 @@ const Game = (() => {
     } catch (err) {
       _setStatus('AI error — skipping turn.');
       _logRuling(`AI error: ${err.message}`);
-      _chess.move('--'); // dummy pass isn't in chess.js; just flip turn workaround
-      // Flip turn manually by swapping to human's turn
+      _isHumanTurn = true;
       _updateTurnIndicator();
       return;
     }
@@ -120,15 +126,16 @@ const Game = (() => {
       _logRuling('Could not parse AI move — turn skipped.');
       _moveHistory.push(`(unparseable: ${rawMove})`);
       _updateMoveLog();
+      _isHumanTurn = true;
       _updateTurnIndicator();
       return;
     }
 
-    // Find the piece to move on the board (may be buried)
+    // Find the piece to move (may be buried in a stack)
     const candidate = MoveParser.resolveSourcePiece(parsed, _aiColor, BoardStack, _chess);
 
     if (candidate) {
-      // Apply move to BoardStack (bypasses chess.js legality)
+      // Apply to BoardStack — no legality check, AI can do anything
       const result = BoardStack.movePieceFromStack(
         candidate.square,
         candidate.piece.id,
@@ -136,20 +143,19 @@ const Game = (() => {
         parsed.isCapture
       );
       if (result) {
-        // Speculatively update chess.js only if the move happens to be legal
-        // (so FEN/PGN stay roughly accurate for referee prompts)
+        // Try to keep chess.js FEN/PGN roughly in sync for referee context.
+        // This silently does nothing if the move is illegal — that's fine;
+        // _isHumanTurn controls turns, not _chess.turn().
         _tryApplyToChessJs(candidate.square, parsed.destination);
       }
     } else {
-      _logRuling(`AI referenced a piece not found on board — move applied to destination only.`);
-      // Place a ghost marker? Just log it; destination square isn't touched.
+      _logRuling(`AI referenced a piece not found on board — skipping piece placement.`);
     }
 
-    // Record raw move string including +/# annotations
+    // Record raw move string (including +/# annotations)
     _moveHistory.push(rawMove);
     Board.render();
     _updateMoveLog();
-    _updateTurnIndicator();
 
     // Handle check/checkmate claims from AI's own annotation
     if (parsed.isCheckmate) {
@@ -162,7 +168,10 @@ const Game = (() => {
       _showBanner('Check — according to Claude!', false);
     }
 
-    _setStatus("Your turn");
+    // Always hand turn back to human after AI move, regardless of chess.js state
+    _isHumanTurn = true;
+    _updateTurnIndicator();
+    _setStatus('Your turn');
   }
 
   // ─── Referee ─────────────────────────────────────────────────────────────
@@ -182,14 +191,14 @@ const Game = (() => {
     }
   }
 
-  /** Returns true if the game ended. */
+  /** Returns true if the game ended as a result of the ruling. */
   function _handleRuling(ruling) {
     if (ruling === 'continue') return false;
 
     const messages = {
-      check: 'Referee: check.',
-      checkmate: 'Referee: CHECKMATE — game over.',
-      stalemate: 'Referee: STALEMATE — draw.',
+      check:      'Referee: check.',
+      checkmate:  'Referee: CHECKMATE — game over.',
+      stalemate:  'Referee: STALEMATE — draw.',
       repetition: 'Referee: Threefold repetition — draw.',
     };
 
@@ -208,7 +217,6 @@ const Game = (() => {
   // ─── Castling helper ─────────────────────────────────────────────────────
 
   function _applyCastlingRook(result) {
-    // result.flags: 'k' = kingside, 'q' = queenside
     const rank = _humanColor === 'w' ? '1' : '8';
     if (result.flags.includes('k')) {
       BoardStack.moveTopPiece('h' + rank, 'f' + rank, false);
@@ -219,7 +227,6 @@ const Game = (() => {
 
   // ─── chess.js sync ────────────────────────────────────────────────────────
 
-  /** Populate BoardStack from chess.js board (initial sync or reset). */
   function _syncStackFromChess() {
     const pieces = [];
     const board = _chess.board();
@@ -237,15 +244,11 @@ const Game = (() => {
     BoardStack.init(pieces);
   }
 
-  /**
-   * Try to apply AI move to chess.js (for FEN/PGN tracking).
-   * This will fail if the move is illegal — that's fine, we just catch and ignore.
-   */
   function _tryApplyToChessJs(from, to) {
     try {
       _chess.move({ from, to, promotion: 'q' });
     } catch (_) {
-      // Illegal AI move — chess.js can't track it, but boardStack already applied it.
+      // Illegal AI move — FEN/PGN will drift slightly, but that's acceptable
     }
   }
 
@@ -255,8 +258,7 @@ const Game = (() => {
     const el = document.getElementById('turn-indicator');
     if (!el) return;
     if (_gameOver) { el.textContent = 'Game over'; return; }
-    const whose = _chess.turn() === _humanColor ? 'Your turn' : "Claude's turn";
-    el.textContent = whose;
+    el.textContent = _isHumanTurn ? 'Your turn' : "Claude's turn";
   }
 
   function _updateMoveLog() {
@@ -306,6 +308,7 @@ const Game = (() => {
 
   function _endGame(msg) {
     _gameOver = true;
+    _isHumanTurn = false;
     _showBanner(msg, true);
     _updateTurnIndicator();
   }
