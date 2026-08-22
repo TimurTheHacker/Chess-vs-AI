@@ -54,10 +54,10 @@
       <br><br>
       <button class="ctrl-btn danger" onclick="resignGame()">Resign</button>
       <br><br>
-      <label class="toggle-row" title="When on, you can attempt any move — the AI referee will allow or block it. King captures are always allowed.">
-        <span class="toggle-label">Chaos Mode<br><small>AI referee judges your moves</small></span>
+      <label class="toggle-row" title="When on, your moves are validated automatically. Turn off to attempt any move — the AI referee will judge it instead.">
+        <span class="toggle-label">Auto Move Checking<br><small>Turn off to allow any move</small></span>
         <span class="toggle-wrap">
-          <input type="checkbox" id="chaos-toggle" onchange="toggleChaos(this.checked)" />
+          <input type="checkbox" id="chaos-toggle" checked onchange="toggleChaos(this.checked)" />
           <span class="toggle-slider"></span>
         </span>
       </label>
@@ -106,10 +106,11 @@
     // also covers the case where the panel resign button is clicked before a game starts
   }
 
-  function toggleChaos(enabled) {
-    if (typeof Game !== 'undefined') Game.setChaosMode(enabled);
+  function toggleChaos(checkingEnabled) {
+    // checkingEnabled = true means strict mode (chaos OFF); false means chaos mode (chaos ON)
+    if (typeof Game !== 'undefined') Game.setChaosMode(!checkingEnabled);
     const label = document.getElementById('chaos-toggle').closest('.toggle-row');
-    label.classList.toggle('chaos-active', enabled);
+    label.classList.toggle('chaos-active', !checkingEnabled); // red styling when checking is OFF
   }
 </script>
 
