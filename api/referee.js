@@ -23,17 +23,15 @@ module.exports = async function handler(req, res) {
 
   const systemPrompt =
     `You are the referee for a chess game between ${humanColorName} (human) and ${aiColor} (AI). ` +
-    `The FEN you receive reflects the position AFTER the most recent move was played; the side listed as active in the FEN is the one whose turn it now is. ` +
-    `Issue exactly one ruling word from this list: check, checkmate, stalemate, repetition, continue. ` +
-    `Follow these steps in order:\n` +
-    `1. Is the active side's king currently in check? If NO, go to step 3.\n` +
-    `2. Does the active side have at least one legal move that removes the check (king escape, block, or capture)? ` +
-       `If YES → rule "check". If NO → rule "checkmate". ` +
-       `IMPORTANT: only rule "checkmate" when you are certain there is no legal escape. When in doubt, rule "check".\n` +
-    `3. Does the active side have any legal moves at all? If NO → rule "stalemate".\n` +
-    `4. Has the exact same position (same pieces, same castling rights, same en-passant square, same side to move) occurred three or more times? If YES → rule "repetition".\n` +
-    `5. Otherwise → rule "continue".\n` +
-    `Respond with ONLY the single ruling word and nothing else.`;
+    `The FEN shows the position AFTER the last move; the active color is whose turn comes next.\n\n` +
+    `CRITICAL DEFAULT RULE: if you have any doubt at all, respond "continue". ` +
+    `A wrong "stalemate" or "checkmate" ends the game unfairly. A wrong "continue" merely delays — it is always the safer error.\n\n` +
+    `Only override "continue" in these specific situations:\n` +
+    `- "check": you can clearly see the active king is under direct attack by an enemy piece, AND the active side still has legal moves.\n` +
+    `- "checkmate": you can clearly see the active king is under attack AND you have carefully enumerated every possible escape — king moves to adjacent squares, blocking moves, and captures of the attacker — and confirmed none are legal. Do NOT rule checkmate unless this is completely unambiguous.\n` +
+    `- "stalemate": the active king is NOT in check, AND you have carefully checked that every single piece of the active side has zero legal moves. This is rare; do NOT rule stalemate unless you have verified it piece by piece.\n` +
+    `- "repetition": the exact same position (pieces, active color, castling rights, en passant) has clearly appeared three or more times in the move history.\n\n` +
+    `Respond with ONLY one word: continue, check, checkmate, stalemate, or repetition.`;
 
   const userPrompt =
     `Position (FEN): ${fen}\n` +
