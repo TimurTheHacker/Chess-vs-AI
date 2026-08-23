@@ -19,7 +19,11 @@ module.exports = async function handler(req, res) {
   const colorName = aiColor === 'b' ? 'Black' : 'White';
 
   const systemPrompt =
-    `You are playing chess as ${colorName}. Output your move in algebraic notation and nothing else.`;
+    `You are playing chess as ${colorName}. ` +
+    `Output your move in standard algebraic notation and nothing else. ` +
+    `Use only the destination square for the move — never include the source square. ` +
+    `Examples of correct format: d5, Nf3, Bxe5, O-O. ` +
+    `Examples of incorrect format: d6d5, e2e4, g1f3.`;
 
   const userPrompt =
     `Position (FEN): ${fen}\n` +
