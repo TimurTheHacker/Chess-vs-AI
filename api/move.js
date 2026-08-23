@@ -31,10 +31,7 @@ module.exports = async function handler(req, res) {
       model: 'claude-sonnet-4-6',
       max_tokens: 10,
       system: systemPrompt,
-      messages: [
-        { role: 'user', content: userPrompt },
-        { role: 'assistant', content: '' }, // prefill: forces the model to start with the move, nothing before it
-      ],
+      messages: [{ role: 'user', content: userPrompt }],
     });
 
     const moveText = message.content[0]?.text?.trim() ?? '';
